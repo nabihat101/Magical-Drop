@@ -1,17 +1,17 @@
 ################# CSC258 Assembly Final Project ###################
 # This file contains our implementation of Magical Drop.
 #
-# Student 1: Name, Student Number
-# Student 2: Name, Student Number (if applicable)
+# Student 1: Nabiha Tariq, 1012251144
+# Student 2: Dana Younes, 1012192084
 #
 # We assert that the code submitted here is entirely our own 
 # creation, and will indicate otherwise when it is not.
 #
 ######################## Bitmap Display Configuration ########################
-# - Unit width in pixels:       TODO
-# - Unit height in pixels:      TODO
-# - Display width in pixels:    TODO
-# - Display height in pixels:   TODO
+# - Unit width in pixels:       8 pixels
+# - Unit height in pixels:      8 pixels
+# - Display width in pixels:    256 pixels
+# - Display height in pixels:   512 pixels
 # - Base Address for Display:   0x10008000 ($gp)
 ##############################################################################
 
