@@ -51,16 +51,24 @@ pink:	.word 0x00eda3b0
 	.globl main
 
     # Run the game.
+    
+# $t0 - current grid cell
+# $t1 - total number of cells we have in 7 x 14 grid
+# $t2 - black colour
+# $t3 - bitmap base address
 main:
     # Initialize the game
     jal draw_border
-    
-    lw $t3, ADDR_DSPL       # Reload bitmap base address
     la $t0, grid            # load address of current cell grid
     li $t1, 98              # load the total number of cells we have in 7 x 14 grid
     lw $t2, black           # load the empty/blank cell colour black
     lw $t3, ADDR_DSPL       # bitmap base address
     
+    
+# $t0 - current grid cell
+# $t1 - total number of cells needed to fill
+# $t2 - black colour
+# $t3 - bitmap base address
 initialize_grid:
     
     # creates grid
@@ -73,6 +81,8 @@ initialize_grid:
     li $t1, 21                  # 3 rows * 7 columns = 21 bubbles that are coloured
 
 # generates random colour bubbles 
+# $a0 - random integer
+# $t4 - stores integer from 1 0 to 2
 random_bubbles:
     li $a0, 0                   # random generator
     li $a1, 4                   # upper bound on random int.
@@ -91,23 +101,30 @@ random_bubbles:
 
     j choose_pink                   # else, choose pink
     
+# $t2 - stores colour
 choose_red:
     lw $t2, red                     # store RGB of colour into register
-    j store_bubble                 # make bubble
+    j store_bubble                  # make bubble
 
+# $t2 - stores colour
 choose_green:
     lw $t2, green                   # store RGB of colour into register
     j store_bubble                  # make bubble
 
+# $t2 - stores colour
 choose_blue:
     lw $t2, blue                    # store RGB of colour into register
     j store_bubble                  # make bubble
-    
+
+# $t2 - stores colour
 choose_pink:
     lw $t2, pink                    # store RGB of colour into register
     j store_bubble                  # make bubble
 	
 # stores bubble in address
+# $t2 - stores colour
+# $t0 - current grid cell
+# $t1 - total number of cells needed to fill
 store_bubble:
     sw $t2, 0($t0)                  # store colour in current cell
     addi $t0, $t0, 4                # increment the current cell to move on
@@ -115,10 +132,20 @@ store_bubble:
     bgtz $t1, random_bubbles        # continue until we have filled all bubbles
     
 la $t0, grid                         # reset to first grid cell before drawing
+
+# draws grid 
+# $t1 - row
+# $t2 - coloumn
 draw_grid:
     li $t1, 0                       # current row
     li $t2, 0                       # current column
     
+# draws grid
+# $t4 - bitmap row (we draw on 4 x 4)
+# $t5 - bitmap column
+# t6 - address of pixel
+# t7 - cell colour
+# t3 - bitmap base address
 draw_grid_loop:
     addi $t4, $t1, 4                # bitmap row
     addi $t5, $t2, 4                # bitmap column
@@ -134,7 +161,7 @@ draw_grid_loop:
     
     sw $t7, 0($t6)                  # draw cell
         
-        
+       
 skip_draw:
     addi $t0, $t0, 4                # move to next cell
     addi $t2, $t2, 1                # move to next column
@@ -160,9 +187,14 @@ game_loop:
     # 5. Go back to Step 1
     j game_loop
     
+    
+# draws border
+# s0 - RA to main address
+# t1 - start column
+# t2 - start row
+# t3 - length of line
 draw_border:
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)       # Save return address
+    add $s0, $ra, $zero      # Save return address because we have nested calls
     
     lw $t0, ADDR_DSPL   # address of bitmap
     lw $t5, white       # colour of border
@@ -171,7 +203,7 @@ draw_border:
     li $t1, 3
     li $t2, 3
     li $t3, 9
-    jal draw_horizontal_line
+    jal draw_horizontal_line        # Note: new RA value stored in ra
 
     # Bottom border length is 9 since 7 from bubbles and 2 extra for sides
     li $t1, 3
@@ -191,17 +223,16 @@ draw_border:
     li $t3, 16
     jal draw_vertical_line
 
-    lw $ra, 0($sp)       # Restore saved return address
-    addi $sp, $sp, 4
+    add $ra, $s0, $zero      # Restore saved return address so that we return to proper instruction    
     jr $ra
 
 
 # Draws a horizontal line
-# $t0 = display base address
-# $t1 = starting X coordinate
-# $t2 = starting Y coordinate
-# $t3 = line length
-# $t5 = colour
+# $t0 - display base address
+# $t1 - starting X coordinate
+# $t2 - starting Y coordinate
+# $t3 - line length
+# $t5 - colour
 
 draw_horizontal_line:
     sll $t1, $t1, 2
@@ -210,22 +241,22 @@ draw_horizontal_line:
     add $t8, $t8, $t2
 
 horizontal_loop:
-    beq $t3, $zero, horizontal_done
+    beq $t3, $zero, horizontal_done     
     sw $t5, 0($t8)
     addi $t8, $t8, 4
     addi $t3, $t3, -1
     j horizontal_loop
 
 horizontal_done:
-    jr $ra
+    jr $ra              # jump back to address in RA
 
 
 # Draws a vertical line
-# $t0 = display base address
-# $t1 = starting X coordinate
-# $t2 = starting Y coordinate
-# $t3 = line length
-# $t5 = colour
+# $t0 - display base address
+# $t1 - starting X coordinate
+# $t2 - starting Y coordinate
+# $t3 - line length
+# $t5 - colour
 
 draw_vertical_line:
     sll $t1, $t1, 2
@@ -243,11 +274,11 @@ vertical_loop:
 vertical_done:
     jr $ra
     
-    
-
+# t1- start column
+# t2 - start row
+# t3 - length of player line
 draw_player:
-    addi $sp, $sp, -4
-    sw $ra, 0($sp)          # save address
+    add $s0, $ra, $zero         # save address
 
     lw $t0, ADDR_DSPL
     lw $t5, pink
@@ -258,6 +289,5 @@ draw_player:
 
     jal draw_vertical_line
 
-    lw $ra, 0($sp)
-    addi $sp, $sp, 4            # restore address
+    add $ra, $s0, $zero          # restore address
     jr $ra
