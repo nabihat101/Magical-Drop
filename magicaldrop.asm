@@ -44,6 +44,12 @@ pink:	.word 0x00eda3b0
 # Mutable Data
 ##############################################################################
 
+player_col: .word 7
+player_row: .word 19
+
+hand_colour: .word 0
+hand_count:  .word 0
+
 ##############################################################################
 # Code
 ##############################################################################
@@ -56,6 +62,7 @@ pink:	.word 0x00eda3b0
 # $t1 - total number of cells we have in 7 x 14 grid
 # $t2 - black colour
 # $t3 - bitmap base address
+# $t4 - keyboard address base
 main:
     # Initialize the game
     jal draw_border
@@ -65,6 +72,7 @@ main:
     lw $t3, ADDR_DSPL       # bitmap base address
     
     
+
 # $t0 - current grid cell
 # $t1 - total number of cells needed to fill
 # $t2 - black colour
@@ -175,6 +183,7 @@ skip_draw:
     blt $t1, 14, draw_grid_loop     # Check if we finished all 14 rows
     
     jal draw_player
+    
 
 game_loop:
     # 1a. Check if key has been pressed
@@ -185,8 +194,178 @@ game_loop:
 	# 4. Sleep
 
     # 5. Go back to Step 1
+   
+    lw $t4, ADDR_KBRD       # load keyboard base address
+    lw $t9, 0($t4)                      # load first value of keyboard
+    andi $t9, $t9, 1                    # Check whether a key is available
+    beq $t9, $zero, game_loop           # If no key, keep checking
+    
+    lw $a0, 4($t4)                  # load second word of keyboard input
+    
+    li $t8, 0x61                    # load A
+    beq $a0, $t8, respond_to_A     # 0X61 is A in ASCII, and we respond when done
+    
+    li $t8, 0x64                    # load D
+    beq $a0, $t8, respond_to_D     # 0X64 is A in ASCII, and we respond when done
+    
+    li $t8, 0x73                    # load S
+    beq $a0, $t8, respond_to_S    # 0X61 is A in ASCII, and we respond when done
+    
+    li $t8, 0x71                    # for q
+    beq $a0, $t8, quit_game
+    
+    j frame_done
+    
+frame_done:
+    li $v0, 32
+    li $a0, 17                  # sleep for 17 ms
+    syscall
+
     j game_loop
     
+
+quit_game:
+    li $v0, 10
+    syscall
+
+respond_to_A:
+    lw $s1, player_col              # load player col
+    li $t8, 4                       # max col in left dir.
+    beq $s1, $t8, game_loop           # if it's reached max. movement in left direction, don't do anything and go back to game loop
+
+    jal erase_player                # erase player
+        
+    addi $s1, $s1, -1               # move left
+    sw $s1, player_col              # save new column
+    
+    jal draw_player
+    j frame_done
+    
+ respond_to_D:
+    lw $s1, player_col              # load player col
+    li $t8, 10                       # max col in left dir.
+    beq $s1, $t8, game_loop           # if it's reached max. movement in right direction, don't do anything and go back to game loop
+    
+    jal erase_player                # erase player
+        
+    addi $s1, $s1, +1               # move right
+    sw $s1, player_col              # save new column
+    
+    jal draw_player  
+    j frame_done
+    
+# s1 - player column in bitmap display 
+# t0 - player column in grid display 
+# t1 - bottom most rown in grid display 
+# t2 - current cell index in grid display 
+# t3 - current cell offsetted by 4 
+# t4 - current cell address in grid display
+respond_to_S:
+    lw $s1, player_col              # load player col
+    addi $t0, $s1, -4               # convert to grid column from bitmap since player_col is the bitmap "location"
+    li $t1, 13                      # bottom most row which account for if bubbles occupy spaces past the third row
+    
+    mul $t2, $t1, 7                 # we need to convert from grid location to bitmap location using formula (row x total columns + current column)
+    add $t2, $t2, $t0               # calculates the cell we want
+    
+    sll $t3, $t2, 2                 # byte offset since each cell is 4 bytes
+    
+    la $t4, grid                    # load start of grid
+    
+    add $t4, $t4, $t3               # add grid starting point to get the memory address
+    lw $t6, black
+
+    # Search upward for first non-empty cell
+    lw $t5, 0($t4)                  # colour of cell
+    beq $t5, $t6, check_row         # if black, keep searching
+
+    sw $t5, hand_colour 
+    jal grab_bubble
+    j frame_done
+
+check_row:
+    beq $t1, $zero, game_loop
+
+    addi $t1, $t1, -1               # move up one row
+    addi $t4, $t4, -28              # move cell above in memory address (28 bytes per row)
+
+    lw $t5, 0($t4)                  # get colour
+    beq $t5, $t6, check_row         # if cell empty, check next row in same column
+
+    lw $t7, hand_count
+    beq $t7, $zero, first_bubble
+
+    lw $t8, hand_colour
+    bne $t5, $t8, draw_bubbles      # if different colour, don't collect
+
+    j grab_bubble
+
+first_bubble:
+    sw $t5, hand_colour             # save colour of first bubble
+    j grab_bubble
+    
+# $t5 - colour of bubble(s)
+# $t4 - address of current cell
+# $t1 - current row
+grab_bubble:
+    lw $t6, black
+    sw $t6, 0($t4)                  # replaces current cell colour with black in memory 
+
+    # Erase bubble from bitmap display
+    lw $t7, ADDR_DSPL
+    addi $t8, $t1, 4                # calculate bitmap display address
+    sll $t8, $t8, 7                 # grid to bitmap
+    add $t7, $t7, $t8               # multiply by 128 since 128 bytes per row
+
+    lw $t8, player_col              # load player column
+    sll $t8, $t8, 2                 # multiply by 4 since each cell is 4 bytes
+    add $t7, $t7, $t8               # the actual bitmap address
+
+    sw $t6, 0($t7)                  # store black in the address to showup on display
+
+    lw $t8, hand_count              # increment number of bubbles player has collected 
+    addi $t8, $t8, 1
+    sw $t8, hand_count
+
+    beq $t1, $zero, grab_done       # stop if we reached the top row
+
+    addi $t1, $t1, -1               # move up
+    addi $t4, $t4, -28              # move cell
+
+    lw $t6, 0($t4)                  # check if next one has same colour 
+    beq $t6, $t5, grab_bubble
+
+    j grab_done
+    
+    
+# t0 - bitmap address
+# t3 - hand count of bubbles collected
+# t4 - colour of bubbles
+draw_bubbles:
+    lw $t0, ADDR_DSPL               # starting bitmap display address
+
+    lw $t1, player_col              # load player column
+    sll $t1, $t1, 2                 # multiply by 4 to offset bytes
+    add $t0, $t0, $t1               # add to starting address
+
+    li $t1, 17                      # put bubbles in row 18 starting (right above player)
+    sll $t2, $t1, 7                 # multiply by 128 since 128 bytes per row
+    add $t0, $t0, $t2               # get the bitmap address
+
+    lw $t3, hand_count              # load number of bubbles collected
+    lw $t4, hand_colour             # load colour of bubbles
+
+draw_bubbles_loop:
+    beq $t3, $zero, game_loop       # when count is 0, done drawing
+
+    sw $t4, 0($t0)                  # draw bubble
+    addi $t0, $t0, -128             # decrement address to get next row right on top
+    addi $t3, $t3, -1               # decrement hand count
+
+    j draw_bubbles_loop
+
+grab_done:
+    j draw_bubbles
     
 # draws border
 # s0 - RA to main address
@@ -283,8 +462,27 @@ draw_player:
     lw $t0, ADDR_DSPL
     lw $t5, pink
 
-    li $t1, 7
-    li $t2, 19
+    lw $t1, player_col
+    lw $t2, player_row
+    li $t3, 2
+
+    jal draw_vertical_line
+
+    add $ra, $s0, $zero          # restore address
+    jr $ra
+    
+     
+# t1- start column
+# t2 - start row
+# t3 - length of player line   
+erase_player:
+    add $s0, $ra, $zero         # save address
+
+    lw $t0, ADDR_DSPL
+    lw $t5, black
+
+    lw $t1, player_col
+    lw $t2, player_row
     li $t3, 2
 
     jal draw_vertical_line
