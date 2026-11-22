@@ -38,6 +38,9 @@ blue:	.word 0x000000FF
 black:	.word 0x00000000 
 white: 	.word 0x00FFFFFF 
 pink:	.word 0x00eda3b0
+bubble_colours: .word 0x00FF0000, 0x0000FF00, 0x000000FF, 0x00eda3b0   # red, green, blue, pink
+game_over: .word 0
+key_count: .word 0
 
 
 ##############################################################################
@@ -186,6 +189,8 @@ skip_draw:
     
 
 game_loop:
+    lw   $t0, game_over         # check if game is over
+    bne  $t0, $zero, quit_game  # if yes, end the game
     # 1a. Check if key has been pressed
     # 1b. Check which key has been pressed
     # 2a. Check for collisions
@@ -199,6 +204,21 @@ game_loop:
     lw $t9, 0($t4)                      # load first value of keyboard
     andi $t9, $t9, 1                    # Check whether a key is available
     beq $t9, $zero, game_loop           # If no key, keep checking
+    lw $t5, key_count 
+    addi $t5, $t5, 1           
+    blt $t5, 10, save_count             # less than 10 keystrokes have passed since last row advance
+
+    # we have reached 10 keystrokes 
+    sw $zero, key_count
+    jal advance_rows
+    j read_key
+
+    
+    save_count: 
+      sw $t5, key_count             
+      
+    read_key:
+      lw $t4, ADDR_KBRD             # reading a key pressed
     
     lw $a0, 4($t4)                  # load second word of keyboard input
     
@@ -210,6 +230,9 @@ game_loop:
     
     li $t8, 0x73                    # load S
     beq $a0, $t8, respond_to_S    # 0X61 is A in ASCII, and we respond when done
+                                    
+    li $t8, 0x77                    # load W
+    beq $a0, $t8, respond_to_W      # 0X77 is W in ASCII
     
     li $t8, 0x71                    # for q
     beq $a0, $t8, quit_game
@@ -227,6 +250,7 @@ frame_done:
 quit_game:
     li $v0, 10
     syscall
+
 
 respond_to_A:
     lw $s1, player_col              # load player col
@@ -252,6 +276,10 @@ respond_to_A:
     sw $s1, player_col              # save new column
     
     jal draw_player  
+    j frame_done
+
+  respond_to_W:
+    jal throw
     j frame_done
     
 # s1 - player column in bitmap display 
@@ -489,3 +517,118 @@ erase_player:
 
     add $ra, $s0, $zero          # restore address
     jr $ra
+
+# returns $v0 = 1 if any cell in row 13 (the last row) is filled, else 0
+# $t0 - address of current cell, $t1 - stop address, $t2 - cell colour (to check for bubbles)
+check_game_over:
+    la   $t0, grid
+    addi $t0, $t0, 364        # first cell of row 13
+    la   $t1, grid
+    addi $t1, $t1, 392        # one past the last cell
+    
+cgo_loop:
+    bge  $t0, $t1, cgo_safe   # checked all 7 cells, safe
+    lw   $t2, 0($t0)          # load current cell
+    bne  $t2, $zero, cgo_over # there is a bubble, so game over!
+    addi $t0, $t0, 4
+    j    cgo_loop
+    
+cgo_over:
+    li   $v0, 1
+    jr   $ra
+cgo_safe:
+    li   $v0, 0
+    jr   $ra
+
+# fills row 0 with 7 random bubble colours
+# $t0 - address of current cell, $t1 - cells left, $t2 - colour, $t3 - colour address
+gen_row:
+    la   $t0, grid
+    li   $t1, 7
+gen_loop:
+    li   $v0, 42
+    li   $a0, 0
+    li   $a1, 4
+    syscall                   # $a0 = random number from 0 to 3
+    sll  $a0, $a0, 2          # turn the number into a colour 
+    la   $t3, bubble_colours
+    add  $t3, $t3, $a0        # point at chosen colour
+    lw   $t2, 0($t3)          # load the colour
+    sw   $t2, 0($t0)          # put the colour in the grid
+    addi $t0, $t0, 4
+    addi $t1, $t1, -1
+    bgtz $t1, gen_loop
+    jr   $ra
+
+# pushes every row down one and adds a new random row 0
+# sets game_over = 1 instead if the last row is already filled
+# $t0 - address of current cell, $t1 - cell colour, $t2 - start of grid
+advance_rows:
+    addi $sp, $sp, -4
+    sw   $ra, 0($sp)          # save return address (for calling other functions)
+
+    jal  check_game_over
+    beq  $v0, $zero, do_shift
+    li   $t0, 1
+    sw   $t0, game_over       # game over!
+    j    advance_end
+
+do_shift:
+    la   $t2, grid            # stop point
+    addi $t0, $t2, 360        # last cell of row 12
+shift_loop:
+    blt  $t0, $t2, shift_done
+    lw   $t1, 0($t0)         # read the cell
+    sw   $t1, 28($t0)        # write it one row lower
+    addi $t0, $t0, -4
+    j    shift_loop
+shift_done:
+    jal  gen_row
+
+advance_end:
+    lw   $ra, 0($sp)
+    addi $sp, $sp, 4
+    jr   $ra
+
+# $t0 - current cell, $t1 - cell colour, $t2 - held colour, $t3 - held count (how many bubbles are held), $t4 will be grid, then finish line
+throw:
+  addi $sp, $sp, -4
+  sw   $ra, 0($sp) # save return address again
+  
+  lw $t3, hand_count
+  beq $t3, $0, throw_end
+  lw $t0, player_col  # read the player's column
+  addi $t0, $t0, -4   # player_col is the bitmap column, so -4 gives the grid column
+  sll $t0,$t0, 2      # column offset (player column x 4)
+  la $t4, grid 
+  add $t0, $t0, $t4 
+  addi $t4, $t4, 392 # the finish line
+
+  find_empty:
+    bge $t0, $t4, throw_end # reached the end
+    lw $t1, 0($t0)          # read current cell
+    beq $t1, $zero, place_bubbles 
+    addi $t0, $t0, 28
+    j find_empty
+
+place_bubbles:
+  lw $t2, hand_colour
+
+place_loop:
+  beq $t3, $zero, reset_hands # no bubbles
+  bge $t0, $t4, reset_hands   # reached finish line
+  sw $t2, 0($t0)              # update cell colour
+  addi $t0, $t0, 28
+  addi $t3, $t3, -1
+  j place_loop
+
+# resets hand_count and hand_colour
+reset_hands: 
+  sw $zero, hand_count
+  sw $zero, hand_colour
+  
+# end
+throw_end:
+  lw   $ra, 0($sp)
+  addi $sp, $sp, 4
+  jr   $ra
