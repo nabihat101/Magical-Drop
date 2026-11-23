@@ -38,7 +38,7 @@ blue:	.word 0x000000FF
 black:	.word 0x00000000 
 white: 	.word 0x00FFFFFF 
 pink:	.word 0x00eda3b0
-orange: .word 0x00FFA500daa
+orange: .word 0x00FFA500
 bubble_colours: .word 0x00FF0000, 0x0000FF00, 0x000000FF, 0x00eda3b0   # red, green, blue, pink
 game_over: .word 0  # this will be 1 when the game is over
 key_count: .word 0  # tracks number of keystrokes so we can implement a row advance after every 10
@@ -211,6 +211,7 @@ game_loop:
     # we have reached 10 keystrokes 
     sw $zero, key_count
     jal advance_rows  # advance rows every 10 key strokes
+    jal redraw_grid
     j read_key        # read which key is pressed
 
     
@@ -754,36 +755,36 @@ new_run:
 matches_end:
   jr $ra
 
-
 # redraws the whole grid on the screen, painting empty cells black
 # $t0 - current grid cell, $t1 - row, $t2 - column, $t3 - bitmap address
 # $t4, $t5 - bitmap row/col, $t6 - pixel address, $t7 - cell colour
 redraw_grid:                             
-    la   $t0, grid  # setup                      
-    lw   $t3, ADDR_DSPL
-    li   $t1, 0
-    li   $t2, 0
+    la   $t0, grid  # setup (start at first cell of grid)                     
+    lw   $t3, ADDR_DSPL # get screen's starting address
+    li   $t1, 0 # start at row 0
+    li   $t2, 0 # start at column 0
 
 redraw_loop:                               
-    addi $t4, $t1, 4                      
-    addi $t5, $t2, 4
-    sll  $t6, $t4, 5
-    add  $t6, $t6, $t5
-    sll  $t6, $t6, 2
-    add  $t6, $t6, $t3
+    addi $t4, $t1, 4  # board starts 4 squres down                   
+    addi $t5, $t2, 4 # 4 squares in
+    sll  $t6, $t4, 5 # x32 for 32 squares per screen row
+    add  $t6, $t6, $t5 # screen column = which squre on the screen
+    sll  $t6, $t6, 2 # x4 for number of bytes
+    add  $t6, $t6, $t3 # screen start is the exact address to paint!
 
-    lw   $t7, 0($t0)
+    lw   $t7, 0($t0) # read cell's colour from grid
                                           
-    sw   $t7, 0($t6)
+    sw   $t7, 0($t6) # paint it on screen (black if empty)
                                           
-    addi $t0, $t0, 4
-    addi $t2, $t2, 1
-    blt  $t2, 7, redraw_loop
+    addi $t0, $t0, 4 # next grid cell
+    addi $t2, $t2, 1 # next column
+    blt  $t2, 7, redraw_loop # in same row? keep going
 
-    li   $t2, 0
-    addi $t1, $t1, 1
-    blt  $t1, 14, redraw_loop    
+    li   $t2, 0 # back to first column
+    addi $t1, $t1, 1 # next row
+    blt  $t1, 14, redraw_loop # rows left? keep going
 
     jr   $ra
 
   
+
