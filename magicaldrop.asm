@@ -38,7 +38,7 @@ blue:	.word 0x000000FF
 black:	.word 0x00000000 
 white: 	.word 0x00FFFFFF 
 pink:	.word 0x00eda3b0
-orange: .word 0x00FFA500
+orange: .word 0x00FFA500daa
 bubble_colours: .word 0x00FF0000, 0x0000FF00, 0x000000FF, 0x00eda3b0   # red, green, blue, pink
 game_over: .word 0  # this will be 1 when the game is over
 key_count: .word 0  # tracks number of keystrokes so we can implement a row advance after every 10
@@ -89,7 +89,7 @@ initialize_grid:
     addi $t1, $t1, -1           # decrement the number of cells we still need to fill
     bgtz $t1, initialize_grid   # keep drawing until we have filled all cells
     la $t0, grid                # reset to first grid cell
-    li $t1, 21                  # 3 rows * 7 columns = 21 bubbles that are coloured
+    li $t1, 28                  # 3 rows * 7 columns = 21 bubbles that are coloured
 
 # generates random colour bubbles 
 # $a0 - random integer
@@ -211,12 +211,11 @@ game_loop:
     # we have reached 10 keystrokes 
     sw $zero, key_count
     jal advance_rows  # advance rows every 10 key strokes
-    jal redraw_grid   # show pushed down rows on screen 
     j read_key        # read which key is pressed
 
     
     save_count: 
-      sw $t5, key_count # write key count to memory            
+      sw $t5, key_count             # write key count to memory            
       
     read_key:
       lw $t4, ADDR_KBRD             # reading a key pressed
@@ -258,27 +257,89 @@ respond_to_A:
     li $t8, 4                       # max col in left dir.
     beq $s1, $t8, game_loop           # if it's reached max. movement in left direction, don't do anything and go back to game loop
 
-    jal erase_player                # erase player
-        
-    addi $s1, $s1, -1               # move left
-    sw $s1, player_col              # save new column
+    # erase the bubbles by calculating bitmap position and putting black
+    lw $t0, ADDR_DSPL               # Load the bitmap display base address
+    sll $t1, $s1, 2                 # Multiply the player's column by 4 (bytes per pixel)
+    add $t0, $t0, $t1               # Calculate the address of the bottom held bubble
+    li $t1, 17                      # Set the starting bitmap row to 17
+    sll $t1, $t1, 7                 # Multiply row 17 by 128 (bytes per bitmap row)
+    add $t0, $t0, $t1
+    lw $t2, hand_count              # Load the number of bubbles being held
+    lw $t3, black                   # Load the black colour
     
-    jal draw_player
-    j frame_done
+erase_hand_A:
+    beq $t2, $zero, move_A          # if no more bubbles, erase player 
+    sw $t3, 0($t0)                  # Erase the current held bubble by drawing black
+    addi $t0, $t0, -128             # Move up one row
+    addi $t2, $t2, -1               # Decrement the number of bubbles held
+    j erase_hand_A                  # keep going until all erased
     
- respond_to_D:
-    lw $s1, player_col              # load player col
-    li $t8, 10                       # max col in left dir.
-    beq $s1, $t8, game_loop           # if it's reached max. movement in right direction, don't do anything and go back to game loop
+move_A:
+    jal erase_player
+    addi $s1, $s1, -1               # Decrease the player's column by 1
+    sw $s1, player_col              # save player column
+    jal draw_player                 # draw player 
     
-    jal erase_player                # erase player
-        
-    addi $s1, $s1, +1               # move right
-    sw $s1, player_col              # save new column
+    lw $t0, ADDR_DSPL               # Load the bitmap address
+    sll $t1, $s1, 2                 # Multiply the column by 4
+    add $t0, $t0, $t1               # Add the column offset to address
+    li $t1, 17                      # Set the starting bitmap row to 17
+    sll $t1, $t1, 7                 # Multiply row 17 by 128
+    add $t0, $t0, $t1               # address of the bottom held bubble
+    lw $t2, hand_count              # Load the bubbles being held
+    lw $t3, hand_colour             # Load the colour 
     
-    jal draw_player  
-    j frame_done
+draw_hand_A:
+    beq $t2, $zero, frame_done      # if none left, done
+    sw $t3, 0($t0)                  # Draw a collected bubble at new pos.
+    addi $t0, $t0, -128             # Move up one row
+    addi $t2, $t2, -1               # decrement bubble
+    j draw_hand_A               
 
+respond_to_D:
+    lw $s1, player_col              # load player col
+    li $t8, 10                      # max col in right dir.
+    beq $s1, $t8, game_loop         # if it's reached max. movement in left direction, don't do anything and go back to game loop
+
+    # erase the bubbles by calculating bitmap position and putting black
+    lw $t0, ADDR_DSPL               # Load the bitmap display base address
+    sll $t1, $s1, 2                 # Multiply the player's column by 4 (bytes per pixel)
+    add $t0, $t0, $t1               # Calculate the address of the bottom held bubble
+    li $t1, 17                      # Set the starting bitmap row to 17
+    sll $t1, $t1, 7                 # Multiply row 17 by 128 (bytes per bitmap row)
+    add $t0, $t0, $t1
+    lw $t2, hand_count              # Load the number of bubbles being held
+    lw $t3, black                   # Load the black colour
+    
+erase_hand_D:
+    beq $t2, $zero, move_D          # if no more bubbles, erase player 
+    sw $t3, 0($t0)                  # Erase the current held bubble by drawing black
+    addi $t0, $t0, -128             # Move up one row
+    addi $t2, $t2, -1               # Decrement the number of bubbles held
+    j erase_hand_D                  # keep going until all erased
+    
+move_D:
+    jal erase_player
+    addi $s1, $s1, +1               # increase the player's column by 1
+    sw $s1, player_col              # save player column
+    jal draw_player                 # draw player 
+    
+    lw $t0, ADDR_DSPL               # Load the bitmap address
+    sll $t1, $s1, 2                 # Multiply the column by 4
+    add $t0, $t0, $t1               # Add the column offset to address
+    li $t1, 17                      # Set the starting bitmap row to 17
+    sll $t1, $t1, 7                 # Multiply row 17 by 128
+    add $t0, $t0, $t1               # address of the bottom held bubble
+    lw $t2, hand_count              # Load the bubbles being held
+    lw $t3, hand_colour             # Load the colour 
+    
+draw_hand_D:
+    beq $t2, $zero, frame_done      # if none left, done
+    sw $t3, 0($t0)                  # Draw a collected bubble at new pos.
+    addi $t0, $t0, -128             # Move up one row
+    addi $t2, $t2, -1   
+    j draw_hand_D
+    
   # throw when the W key is pressed
   respond_to_W:
     jal throw
@@ -698,33 +759,31 @@ matches_end:
 # $t0 - current grid cell, $t1 - row, $t2 - column, $t3 - bitmap address
 # $t4, $t5 - bitmap row/col, $t6 - pixel address, $t7 - cell colour
 redraw_grid:                             
-    la   $t0, grid  # setup (start at first cell of grid)                     
-    lw   $t3, ADDR_DSPL # get screen's starting address
-    li   $t1, 0 # start at row 0
-    li   $t2, 0 # start at column 0
-
+    la   $t0, grid  # setup                      
+    lw   $t3, ADDR_DSPL
+    li   $t1, 0
+    li   $t2, 0
 
 redraw_loop:                               
-    addi $t4, $t1, 4  # board starts 4 squres down                   
-    addi $t5, $t2, 4 # 4 squares in
-    sll  $t6, $t4, 5 # x32 for 32 squares per screen row
-    add  $t6, $t6, $t5 # screen column = which squre on the screen
-    sll  $t6, $t6, 2 # x4 for number of bytes
-    add  $t6, $t6, $t3 # screen start is the exact address to paint!
+    addi $t4, $t1, 4                      
+    addi $t5, $t2, 4
+    sll  $t6, $t4, 5
+    add  $t6, $t6, $t5
+    sll  $t6, $t6, 2
+    add  $t6, $t6, $t3
 
-    lw   $t7, 0($t0) # read cell's colour from grid
+    lw   $t7, 0($t0)
                                           
-    sw   $t7, 0($t6) # paint it on screen (black if empty)
+    sw   $t7, 0($t6)
                                           
-    addi $t0, $t0, 4 # next grid cell
-    addi $t2, $t2, 1 # next column
-    blt  $t2, 7, redraw_loop # in same row? keep going
+    addi $t0, $t0, 4
+    addi $t2, $t2, 1
+    blt  $t2, 7, redraw_loop
 
-    li   $t2, 0 # back to first column
-    addi $t1, $t1, 1 # next row
-    blt  $t1, 14, redraw_loop # rows left? keep going
+    li   $t2, 0
+    addi $t1, $t1, 1
+    blt  $t1, 14, redraw_loop    
 
     jr   $ra
 
   
-
