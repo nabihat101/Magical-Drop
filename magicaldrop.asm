@@ -38,6 +38,7 @@ blue:	.word 0x000000FF
 black:	.word 0x00000000 
 white: 	.word 0x00FFFFFF 
 pink:	.word 0x00eda3b0
+orange: .word 0x00FFA500daa
 bubble_colours: .word 0x00FF0000, 0x0000FF00, 0x000000FF, 0x00eda3b0   # red, green, blue, pink
 game_over: .word 0  # this will be 1 when the game is over
 key_count: .word 0  # tracks number of keystrokes so we can implement a row advance after every 10
@@ -75,7 +76,6 @@ main:
     lw $t3, ADDR_DSPL       # bitmap base address
     
     
-
 # $t0 - current grid cell
 # $t1 - total number of cells needed to fill
 # $t2 - black colour
@@ -281,6 +281,7 @@ respond_to_A:
   # throw when the W key is pressed
   respond_to_W:
     jal throw
+    jal redraw_grid
     j frame_done
     
 # s1 - player column in bitmap display 
@@ -441,7 +442,6 @@ draw_border:
 # $t2 - starting Y coordinate
 # $t3 - line length
 # $t5 - colour
-
 draw_horizontal_line:
     sll $t1, $t1, 2
     sll $t2, $t2, 7
@@ -489,7 +489,7 @@ draw_player:
     add $s0, $ra, $zero         # save address
 
     lw $t0, ADDR_DSPL
-    lw $t5, pink
+    lw $t5, orange
 
     lw $t1, player_col
     lw $t2, player_row
@@ -610,7 +610,7 @@ throw:
   sll $t0,$t0, 2      # column offset (player column x 4)
   la $t4, grid 
   add $t0, $t0, $t4 
-  addi $t4, $t4, 392 # the finish line
+  addi $t4, $t4, 392 # the finish line 
 
 
   find_empty:
@@ -687,9 +687,42 @@ new_run:
   add $t2, $t4, $zero # update run colour to current cell's colour
   li $t3, 1 # reset run length to 1
   j matches_loop 
-  
+
 # done     
 matches_end:
   jr $ra
+
+
+# redraws the whole grid on the screen, painting empty cells black
+# $t0 - current grid cell, $t1 - row, $t2 - column, $t3 - bitmap address
+# $t4, $t5 - bitmap row/col, $t6 - pixel address, $t7 - cell colour
+redraw_grid:                             
+    la   $t0, grid  # setup                      
+    lw   $t3, ADDR_DSPL
+    li   $t1, 0
+    li   $t2, 0
+
+redraw_loop:                               
+    addi $t4, $t1, 4                      
+    addi $t5, $t2, 4
+    sll  $t6, $t4, 5
+    add  $t6, $t6, $t5
+    sll  $t6, $t6, 2
+    add  $t6, $t6, $t3
+
+    lw   $t7, 0($t0)
+                                          
+    sw   $t7, 0($t6)
+                                          
+    addi $t0, $t0, 4
+    addi $t2, $t2, 1
+    blt  $t2, 7, redraw_loop
+
+    li   $t2, 0
+    addi $t1, $t1, 1
+    blt  $t1, 14, redraw_loop    
+
+    jr   $ra
+
   
 
