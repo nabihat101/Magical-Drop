@@ -661,7 +661,7 @@ advance_end:
     addi $sp, $sp, 4
     jr   $ra
 
-# $t0 - current cell, $t1 - cell colour, $t2 - held colour, $t3 - held count (how many bubbles are held), $t4 will be grid, then finish line
+# $t0 - current cell, $t1 - cell colour, $t2 - held colour, $t3 - hand count (how many bubbles are held), $t4 will be grid, then finish line
 throw:
   addi $sp, $sp, -4
   sw   $ra, 0($sp) # save return address again
@@ -698,8 +698,9 @@ place_loop:
 reset_hands: 
   sw $zero, hand_count
   sw $zero, hand_colour
+  addi $a0, $t0, -28 # $a0 = last bubble we placed ($t0 is one row past it)
 
-jal matches # check for 3+ in this column
+jal matches # check for 3+ in this column!
   
 # end
 throw_end:
@@ -707,51 +708,46 @@ throw_end:
   addi $sp, $sp, 4
   jr   $ra
 
-# check for 3 in a row or more
-# $t0 - walker address, $t1 - run start, $t2 - run colour, $t3 - run length, $t4 - current cell colour, $t5 - finish line 
-# (a run being the number of same-coloured cells in a row!)
+# checks only the run touching the bubbles we just threw, clears it if 3+
+# $a0 - last placed cell, $t0 - walker, $t1 - top of run, $t2 - thrown colour
+# $t3 - run length, $t4 - current colour, $t5 - top of grid, then finish line
 matches:
-  lw $t0, player_col  # read the player's column
-  addi $t0, $t0, -4   # player_col is the bitmap column, so -4 gives the grid column
-  sll $t0,$t0, 2      # column offset (player column x 4)
-  la $t5, grid 
-  add $t0, $t0, $t5 
-  addi $t5, $t5, 392 # the finish line
-  lw $t4, 0($t0)  # read first cell's colour
-  beq $t4, $zero, matches_end # it's empty
-  add $t1, $t0, $zero # start counting the first run
-  add $t2, $t4, $zero
-  li $t3, 1
+  lw $t2, 0($a0) # colour we threw
+  la $t5, grid # top of grid
+  add $t0, $a0, $zero # start walking at the last placed bubble
 
-matches_loop:
-  addi $t0, $t0, 28
-  bge $t0, $t5, run_end
-  lw $t4, 0($t0) # load the current cell colour
-  beq $t4, $0, run_end  # empty cell, end run
-  bne $t4, $t2, run_end # different colour, end run
-  addi $t3, $t3, 1 # another cell of the same colour, so increase run by 1
-  j matches_loop
+# walk up to the top of the run
+find_top:
+  addi $t1, $t0, -28 # cell above
+  blt $t1, $t5, count_run # went past the top of the grid
+  lw $t4, 0($t1)
+  bne $t4, $t2, count_run # different colour above, so $t0 is the top
+  add $t0, $t1, $zero # move up
+  j find_top
 
-run_end:
-    blt $t3, 3, new_run # restart run when length < 3
-    j clear_loop # clear run otherwise
-  
+# walk down from the top, counting same-coloured cells
+count_run:
+  add $t1, $t0, $zero # remember top of run
+  li $t3, 0
+  addi $t5, $t5, 392 # finish line
+count_loop:
+  bge $t0, $t5, check_run # reached end of grid
+  lw $t4, 0($t0) 
+  bne $t4, $t2, check_run # different colour or empty, run ends
+  addi $t3, $t3, 1
+  addi $t0, $t0, 28 # move down
+  j count_loop
+
+# clear the run if it's 3 or more
+check_run:
+  blt $t3, 3, matches_end
 clear_loop:
-    beq $t3, $zero, new_run # run restarts (a new one)
-    sw $zero, 0($t1) # clear this bubble
-    addi $t1, $t1, 28 # move down one row
-    addi $t3, $t3, -1 # decrease run length by 1
-    j clear_loop
-      
-new_run:
-  bge $t0, $t5, matches_end # reached finish line, end run
-  beq $t4, $zero, matches_end # empty cell, end run_end
-  add $t1, $t0, $zero # update run start to where walker is
-  add $t2, $t4, $zero # update run colour to current cell's colour
-  li $t3, 1 # reset run length to 1
-  j matches_loop 
+  beq $t3, $zero, matches_end
+  sw $zero, 0($t1) # clear this bubble
+  addi $t1, $t1, 28 # move down
+  addi $t3, $t3, -1
+  j clear_loop
 
-# done     
 matches_end:
   jr $ra
 
@@ -765,7 +761,7 @@ redraw_grid:
     li   $t2, 0 # start at column 0
 
 redraw_loop:                               
-    addi $t4, $t1, 4  # board starts 4 squres down                   
+    addi $t4, $t1, 4  # board starts 4 squares down                   
     addi $t5, $t2, 4 # 4 squares in
     sll  $t6, $t4, 5 # x32 for 32 squares per screen row
     add  $t6, $t6, $t5 # screen column = which squre on the screen
