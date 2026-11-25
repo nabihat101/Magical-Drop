@@ -265,8 +265,8 @@ respond_to_A:
     lw $t0, ADDR_DSPL               # Load the bitmap display base address
     sll $t1, $s1, 2                 # Multiply the player's column by 4 (bytes per pixel)
     add $t0, $t0, $t1               # Calculate the address of the bottom held bubble
-    li $t1, 17                      # Set the starting bitmap row to 17
-    sll $t1, $t1, 7                 # Multiply row 17 by 128 (bytes per bitmap row)
+    li $t1, 21                      # Set the starting bitmap row to 21
+    sll $t1, $t1, 7                 # Multiply row 21 by 128 (bytes per bitmap row)
     add $t0, $t0, $t1
     lw $t2, hand_count              # Load the number of bubbles being held
     lw $t3, black                   # Load the black colour
@@ -274,7 +274,7 @@ respond_to_A:
 erase_hand_A:
     beq $t2, $zero, move_A          # if no more bubbles, erase player 
     sw $t3, 0($t0)                  # Erase the current held bubble by drawing black
-    addi $t0, $t0, -128             # Move up one row
+    addi $t0, $t0, 128              # Move down one row
     addi $t2, $t2, -1               # Decrement the number of bubbles held
     j erase_hand_A                  # keep going until all erased
     
@@ -287,8 +287,8 @@ move_A:
     lw $t0, ADDR_DSPL               # Load the bitmap address
     sll $t1, $s1, 2                 # Multiply the column by 4
     add $t0, $t0, $t1               # Add the column offset to address
-    li $t1, 17                      # Set the starting bitmap row to 17
-    sll $t1, $t1, 7                 # Multiply row 17 by 128
+    li $t1, 21                      # Set the starting bitmap row to 21
+    sll $t1, $t1, 7                 # Multiply row 21 by 128
     add $t0, $t0, $t1               # address of the bottom held bubble
     lw $t2, hand_count              # Load the bubbles being held
     lw $t3, hand_colour             # Load the colour 
@@ -296,7 +296,7 @@ move_A:
 draw_hand_A:
     beq $t2, $zero, frame_done      # if none left, done
     sw $t3, 0($t0)                  # Draw a collected bubble at new pos.
-    addi $t0, $t0, -128             # Move up one row
+    addi $t0, $t0, 128              # Move down one row
     addi $t2, $t2, -1               # decrement bubble
     j draw_hand_A               
 
@@ -309,8 +309,8 @@ respond_to_D:
     lw $t0, ADDR_DSPL               # Load the bitmap display base address
     sll $t1, $s1, 2                 # Multiply the player's column by 4 (bytes per pixel)
     add $t0, $t0, $t1               # Calculate the address of the bottom held bubble
-    li $t1, 17                      # Set the starting bitmap row to 17
-    sll $t1, $t1, 7                 # Multiply row 17 by 128 (bytes per bitmap row)
+    li $t1, 21                      # Set the starting bitmap row to 21
+    sll $t1, $t1, 7                 # Multiply row 21 by 128 (bytes per bitmap row)
     add $t0, $t0, $t1
     lw $t2, hand_count              # Load the number of bubbles being held
     lw $t3, black                   # Load the black colour
@@ -318,7 +318,7 @@ respond_to_D:
 erase_hand_D:
     beq $t2, $zero, move_D          # if no more bubbles, erase player 
     sw $t3, 0($t0)                  # Erase the current held bubble by drawing black
-    addi $t0, $t0, -128             # Move up one row
+    addi $t0, $t0, 128              # Move down one row
     addi $t2, $t2, -1               # Decrement the number of bubbles held
     j erase_hand_D                  # keep going until all erased
     
@@ -331,8 +331,8 @@ move_D:
     lw $t0, ADDR_DSPL               # Load the bitmap address
     sll $t1, $s1, 2                 # Multiply the column by 4
     add $t0, $t0, $t1               # Add the column offset to address
-    li $t1, 17                      # Set the starting bitmap row to 17
-    sll $t1, $t1, 7                 # Multiply row 17 by 128
+    li $t1, 21                      # Set the starting bitmap row to 21
+    sll $t1, $t1, 7                 # Multiply row 21 by 128
     add $t0, $t0, $t1               # address of the bottom held bubble
     lw $t2, hand_count              # Load the bubbles being held
     lw $t3, hand_colour             # Load the colour 
@@ -340,12 +340,13 @@ move_D:
 draw_hand_D:
     beq $t2, $zero, frame_done      # if none left, done
     sw $t3, 0($t0)                  # Draw a collected bubble at new pos.
-    addi $t0, $t0, -128             # Move up one row
+    addi $t0, $t0, 128              # Move down one row
     addi $t2, $t2, -1   
     j draw_hand_D
     
   # throw when the W key is pressed
   respond_to_W:
+    jal clear_hand
     jal throw
     jal redraw_grid
     j frame_done
@@ -444,7 +445,7 @@ draw_bubbles:
     sll $t1, $t1, 2                 # multiply by 4 to offset bytes
     add $t0, $t0, $t1               # add to starting address
 
-    li $t1, 17                      # put bubbles in row 18 starting (right above player)
+    li $t1, 21                      # put bubbles in row 21 starting (just below player)
     sll $t2, $t1, 7                 # multiply by 128 since 128 bytes per row
     add $t0, $t0, $t2               # get the bitmap address
 
@@ -455,7 +456,7 @@ draw_bubbles_loop:
     beq $t3, $zero, game_loop       # when count is 0, done drawing
 
     sw $t4, 0($t0)                  # draw bubble
-    addi $t0, $t0, -128             # decrement address to get next row right on top
+    addi $t0, $t0, 128              # move down one row
     addi $t3, $t3, -1               # decrement hand count
 
     j draw_bubbles_loop
@@ -793,5 +794,24 @@ redraw_loop:
     blt  $t1, 14, redraw_loop # rows left? keep going
 
     jr   $ra
+
+# erases the held bubbles from the screen by painting black
+# over the area under the player (screen rows 21 to 31)
+# $t0 - pixel address, $t1 - rows left to clear, $t2 - black colour
+clear_hand:
+    lw   $t0, player_col      # player's screen column (4-10)
+    sll  $t0, $t0, 2          # column x 4 bytes per unit
+    lw   $t1, ADDR_DSPL       # screen base address
+    add  $t0, $t0, $t1        # address of the player's column in row 0
+    addi $t0, $t0, 2688       # move down to row 21 (21 x 128 bytes = 2688)
+    li   $t1, 11              # 11 rows to clear (rows 21 to 31)
+    lw   $t2, black           # colour to paint with
+
+clear_hand_loop:
+    sw   $t2, 0($t0)          # paint this unit black
+    addi $t0, $t0, 128        # move down one screen row
+    addi $t1, $t1, -1         # one fewer row left to clear
+    bgtz $t1, clear_hand_loop # keep going until all 11 rows are cleared
+    jr   $ra                  # go back to respond_to_W    
 
   
