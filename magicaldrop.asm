@@ -41,10 +41,7 @@ pink:	.word 0x00eda3b0
 orange: .word 0x00FFA500
 bubble_colours: .word 0x00FF0000, 0x0000FF00, 0x000000FF, 0x00eda3b0   # red, green, blue, pink
 
-# Game over and key count
 game_over: .word 0  # this will be 1 when the game is over
-key_count: .word 0  # tracks number of keystrokes so we can implement a row advance after every 10
-
 
 ##############################################################################
 # Mutable Data
@@ -225,23 +222,7 @@ game_loop:
     lw $t4, ADDR_KBRD       # load keyboard base address
     lw $t9, 0($t4)                      # load first value of keyboard
     andi $t9, $t9, 1                    # Check whether a key is available
-    beq $t9, $zero, frame_done          # no key, so sleep then loop again
-    lw $t5, key_count                   
-    addi $t5, $t5, 1                    # another keystroke happened so increase key count!
-    blt $t5, 10, save_count             # less than 10 keystrokes have passed since last row advance
-
-    # we have reached 10 keystrokes 
-    sw $zero, key_count
-    jal advance_rows  # advance rows every 10 key strokes
-    jal redraw_grid
-    j read_key        # read which key is pressed
-
-    
-    save_count: 
-      sw $t5, key_count             # write key count to memory            
-      
-    read_key:
-      lw $t4, ADDR_KBRD             # reading a key pressed
+    beq $t9, $zero, frame_done          # no key, so sleep then loop again          
     
     lw $a0, 4($t4)                  # load second word of keyboard input
     
@@ -630,10 +611,11 @@ cgo_safe:
     jr   $ra
 
 # fills row 0 with 7 random bubble colours
-# $t0 - address of current cell, $t1 - cells left, $t2 - colour, $t3 - colour address
+# $t0 - address of current cell, $t1 - cells left, $t2 - colour, $t3 - colour address, $t4, $t5 - colours 1 and 2 cells below
 gen_row:
     la   $t0, grid # starting cell
     li   $t1, 7    # 7 cells per row
+    
 gen_loop:
     li   $v0, 42 # ask for random number
     li   $a0, 0 # random generator 0
@@ -643,6 +625,14 @@ gen_loop:
     la   $t3, bubble_colours 
     add  $t3, $t3, $a0   # point at chosen colour
     lw   $t2, 0($t3)     # load the colour
+    lw $t4, 28($t0)      # load the colour 1 cell below into a spare register
+    lw $t5, 56($t0)      # load the colour 2 cells below into a spare register
+    bne $t4, $t2, store_colour # cell below is a different colour, so safe
+    bne $t5, $t2, store_colour # cell 2 below is a different colour, so also safe
+    j gen_loop # both cells are the same colour as ours, so pick again
+
+
+  store_colour:
     sw   $t2, 0($t0)     # put the colour in the grid
     addi $t0, $t0, 4     # go to next cell
     addi $t1, $t1, -1    # one fewer cell left
