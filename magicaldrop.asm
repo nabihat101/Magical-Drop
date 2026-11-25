@@ -40,6 +40,8 @@ white: 	.word 0x00FFFFFF
 pink:	.word 0x00eda3b0
 orange: .word 0x00FFA500
 bubble_colours: .word 0x00FF0000, 0x0000FF00, 0x000000FF, 0x00eda3b0   # red, green, blue, pink
+
+# Game over and key count
 game_over: .word 0  # this will be 1 when the game is over
 key_count: .word 0  # tracks number of keystrokes so we can implement a row advance after every 10
 
@@ -53,6 +55,9 @@ player_row: .word 19
 
 hand_colour: .word 0x00000000
 hand_count:  .word 0
+
+frame_count: .word 0 # loops since last timed row advance
+frame_limit: .word 480 # loops per advance (480 x 17 ms = about 8 seconds)
 
 ##############################################################################
 # Code
@@ -187,10 +192,24 @@ skip_draw:
     
     jal draw_player
     
-
+# here, $t6 is used for frame_count and $t7 is used for frame limit
 game_loop:
-    lw   $t0, game_over         # check if game is over
+    lw   $t0, game_over # check if game is over
     bne  $t0, $zero, quit_game  # if yes, end the game
+    lw $t6, frame_count
+    addi $t6, $t6, 1 # add 1 to frame count since another loop happened
+    lw $t7, frame_limit
+    blt $t6, $t7, save_frames # under the limit, so just save the count
+    sw $zero, frame_count  # otherwise, reset frame count to 0        
+    jal advance_rows # advance rows
+    jal redraw_grid # redraw the grid to show new row
+    lw $t7, frame_limit # reload frame limit
+    ble $t7, 60, check_key # if limit <= 60, skip next steps and go to check key
+    addi $t7, $t7, -20 # speed up by 20
+    sw $t7, frame_limit # store it back into frame limit
+    j check_key
+    
+   
     # 1a. Check if key has been pressed
     # 1b. Check which key has been pressed
     # 2a. Check for collisions
@@ -199,11 +218,14 @@ game_loop:
 	# 4. Sleep
 
     # 5. Go back to Step 1
-   
+  save_frames:
+    sw $t6, frame_count  
+    
+  check_key:
     lw $t4, ADDR_KBRD       # load keyboard base address
     lw $t9, 0($t4)                      # load first value of keyboard
     andi $t9, $t9, 1                    # Check whether a key is available
-    beq $t9, $zero, game_loop           # If no key, keep checking
+    beq $t9, $zero, frame_done          # no key, so sleep then loop again
     lw $t5, key_count                   
     addi $t5, $t5, 1                    # another keystroke happened so increase key count!
     blt $t5, 10, save_count             # less than 10 keystrokes have passed since last row advance
@@ -783,4 +805,3 @@ redraw_loop:
     jr   $ra
 
   
-
