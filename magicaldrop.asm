@@ -45,13 +45,6 @@ game_over: .word 0  # this will be 1 when the game is over
 
 paused: .word 0     # 0 when not paused
 
-pause_font:
-    .word 6, 2, 5, 3, 7, 6
-    .word 5, 5, 5, 4, 4, 5
-    .word 6, 7, 5, 2, 6, 5
-    .word 4, 5, 5, 1, 4, 5
-    .word 4, 5, 7, 6, 7, 6
-
 ##############################################################################
 # Mutable Data
 ##############################################################################
@@ -309,57 +302,123 @@ pause_wait:
 # Uses a 2x3 pixel font.
 
 draw_pause_text:
-    la $t0, pause_font       # Load font patterns
-    lw $t9, ADDR_DSPL        # Load bitmap display address
+    addi $sp, $sp, -4
+    sw   $ra, 0($sp)            # save return address
+    lw   $t0, ADDR_DSPL
+    add  $t5, $a0, $zero        # copies colour
 
-    li $t1, 0                # Current letter row
+    # P
+    li $t1, 16
+    li $t2, 5
+    li $t3, 5
+    jal draw_vertical_line      # left side
+    li $t1, 16
+    li $t2, 5
+    li $t3, 3
+    jal draw_horizontal_line    # top
+    li $t1, 16
+    li $t2, 7
+    li $t3, 3
+    jal draw_horizontal_line    # middle
+    li $t1, 18
+    li $t2, 6
+    li $t3, 1
+    jal draw_vertical_line      # right side of loop
 
-pause_text_row:
-    li $t2, 0                # Current letter
+    # A
+    li $t1, 20
+    li $t2, 5
+    li $t3, 5
+    jal draw_vertical_line      # left side
+    li $t1, 22
+    li $t2, 5
+    li $t3, 5
+    jal draw_vertical_line      # right side
+    li $t1, 20
+    li $t2, 5
+    li $t3, 3
+    jal draw_horizontal_line    # top
+    li $t1, 20
+    li $t2, 7
+    li $t3, 3
+    jal draw_horizontal_line    # middle
 
-pause_text_letter:
-    lw $t3, 0($t0)           # Load this letter's row pattern
-    addi $t0, $t0, 4         # Move to next pattern
+    # U
+    li $t1, 24
+    li $t2, 5
+    li $t3, 5
+    jal draw_vertical_line      # left side
+    li $t1, 26
+    li $t2, 5
+    li $t3, 5
+    jal draw_vertical_line      # right side
+    li $t1, 24
+    li $t2, 9
+    li $t3, 3
+    jal draw_horizontal_line    # bottom
 
-    mul $t6, $t2, 4          # Each letter starts 2 columns after the previous
-    addi $t6, $t6, 4        # Starting screen column
+    # S
+    li $t1, 16
+    li $t2, 11
+    li $t3, 3
+    jal draw_horizontal_line    # top
+    li $t1, 16
+    li $t2, 13
+    li $t3, 3
+    jal draw_horizontal_line    # middle
+    li $t1, 16
+    li $t2, 15
+    li $t3, 3
+    jal draw_horizontal_line    # bottom
+    li $t1, 16
+    li $t2, 12
+    li $t3, 1
+    jal draw_vertical_line      # upper left
+    li $t1, 18
+    li $t2, 14
+    li $t3, 1
+    jal draw_vertical_line      # lower right
 
-    li $t4, 0                # Current pixel in letter
+    # E
+    li $t1, 20
+    li $t2, 11
+    li $t3, 5
+    jal draw_vertical_line      # left side
+    li $t1, 20
+    li $t2, 11
+    li $t3, 3
+    jal draw_horizontal_line    # top
+    li $t1, 20
+    li $t2, 13
+    li $t3, 3
+    jal draw_horizontal_line    # middle
+    li $t1, 20
+    li $t2, 15
+    li $t3, 3
+    jal draw_horizontal_line    # bottom
 
-pause_text_col:
-    andi $t5, $t3, 4         # Check whether this pixel should be coloured
-    beq $t5, $zero, pause_black_pixel
+    # D
+    li $t1, 24
+    li $t2, 11
+    li $t3, 5
+    jal draw_vertical_line      # left side
+    li $t1, 24
+    li $t2, 11
+    li $t3, 2
+    jal draw_horizontal_line    # top
+    li $t1, 24
+    li $t2, 15
+    li $t3, 2
+    jal draw_horizontal_line    # bottom
+    li $t1, 26
+    li $t2, 12
+    li $t3, 3
+    jal draw_vertical_line      # right side
 
-    move $t5, $a0            # Use the requested colour (white or black)
-    j draw_pause_pixel
+    lw   $ra, 0($sp)            # restore return address
+    addi $sp, $sp, 4
+    jr   $ra
 
-pause_black_pixel:
-    lw $t5, black            # Empty font pixel should be black
-
-draw_pause_pixel:
-    li $t7, 25               # Starting screen row
-    add $t7, $t7, $t1        # Add current letter row
-    sll $t7, $t7, 7          # Multiply row by 128 bytes
-
-    sll $t8, $t6, 2          # Multiply column by 4 bytes
-    add $t8, $t8, $t7        # Add row offset
-    add $t8, $t8, $t9        # Add display base address
-
-    sw $t5, 0($t8)           # Draw the pixel
-
-    sll $t3, $t3, 1          # Shift pattern to check next pixel
-    addi $t6, $t6, 1         # Move to next screen column
-    addi $t4, $t4, 1         # Move to next pixel
-
-    blt $t4, 3, pause_text_col
-
-    addi $t2, $t2, 1         # Move to next letter
-    blt $t2, 6, pause_text_letter
-
-    addi $t1, $t1, 1         # Move to next row
-    blt $t1, 5, pause_text_row
-
-    jr $ra
 
 quit_game:
     li $v0, 10
