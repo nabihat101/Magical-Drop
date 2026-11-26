@@ -43,6 +43,15 @@ bubble_colours: .word 0x00FF0000, 0x0000FF00, 0x000000FF, 0x00eda3b0   # red, gr
 
 game_over: .word 0  # this will be 1 when the game is over
 
+paused: .word 0     # 0 when not paused
+
+pause_font:
+    .word 6, 2, 5, 3, 7, 6
+    .word 5, 5, 5, 4, 4, 5
+    .word 6, 7, 5, 2, 6, 5
+    .word 4, 5, 5, 1, 4, 5
+    .word 4, 5, 7, 6, 7, 6
+
 ##############################################################################
 # Mutable Data
 ##############################################################################
@@ -193,6 +202,10 @@ skip_draw:
 game_loop:
     lw   $t0, game_over # check if game is over
     bne  $t0, $zero, quit_game  # if yes, end the game
+    
+    lw   $t0, paused
+    bnez $t0, pause_loop
+    
     lw $t6, frame_count
     addi $t6, $t6, 1 # add 1 to frame count since another loop happened
     lw $t7, frame_limit
@@ -238,6 +251,9 @@ game_loop:
     li $t8, 0x77                    # load W
     beq $a0, $t8, respond_to_W      # 0X77 is W in ASCII
     
+    li $t8, 0x70                    # load P
+    beq $a0, $t8, pause_game      # 0X70 is W in ASCII
+    
     li $t8, 0x71                    # for q
     beq $a0, $t8, quit_game
     
@@ -250,6 +266,100 @@ frame_done:
 
     j game_loop
     
+pause_game:
+    li $t0, 1
+    sw $t0, paused              # changing variable to tell system we're puased when 1
+    
+    li $a0, 0x00FFFFFF          # load white
+    jal draw_pause_text         # draw text
+
+    j frame_done
+    
+# Keep checking for P while paused
+pause_loop:
+    lw $t4, ADDR_KBRD
+    lw $t9, 0($t4)              
+    andi $t9, $t9, 1                # check is key is pressed
+
+    beq $t9, $zero, pause_wait      # if it's 0, we keep paused
+
+    lw $a0, 4($t4)                  # read the key
+
+    li $t8, 0x70
+    bne $a0, $t8, pause_wait        # if not p, keep waiting
+
+    # P was pressed again: resume
+    sw $zero, paused    
+
+    # Erase PAUSED by drawing it in black
+    li $a0, 0x00000000
+    jal draw_pause_text
+
+    j game_loop
+    
+pause_wait:
+    li $v0, 32               
+    li $a0, 17                # Sleep for 17 milliseconds
+    syscall
+
+    j pause_loop              # Check the keyboard again
+    
+# Draws PAUSED at screen position (14, 10).
+# $a0 = colour (white to draw, black to erase)
+# Uses a 2x3 pixel font.
+
+draw_pause_text:
+    la $t0, pause_font       # Load font patterns
+    lw $t9, ADDR_DSPL        # Load bitmap display address
+
+    li $t1, 0                # Current letter row
+
+pause_text_row:
+    li $t2, 0                # Current letter
+
+pause_text_letter:
+    lw $t3, 0($t0)           # Load this letter's row pattern
+    addi $t0, $t0, 4         # Move to next pattern
+
+    mul $t6, $t2, 4          # Each letter starts 2 columns after the previous
+    addi $t6, $t6, 4        # Starting screen column
+
+    li $t4, 0                # Current pixel in letter
+
+pause_text_col:
+    andi $t5, $t3, 4         # Check whether this pixel should be coloured
+    beq $t5, $zero, pause_black_pixel
+
+    move $t5, $a0            # Use the requested colour (white or black)
+    j draw_pause_pixel
+
+pause_black_pixel:
+    lw $t5, black            # Empty font pixel should be black
+
+draw_pause_pixel:
+    li $t7, 25               # Starting screen row
+    add $t7, $t7, $t1        # Add current letter row
+    sll $t7, $t7, 7          # Multiply row by 128 bytes
+
+    sll $t8, $t6, 2          # Multiply column by 4 bytes
+    add $t8, $t8, $t7        # Add row offset
+    add $t8, $t8, $t9        # Add display base address
+
+    sw $t5, 0($t8)           # Draw the pixel
+
+    sll $t3, $t3, 1          # Shift pattern to check next pixel
+    addi $t6, $t6, 1         # Move to next screen column
+    addi $t4, $t4, 1         # Move to next pixel
+
+    blt $t4, 3, pause_text_col
+
+    addi $t2, $t2, 1         # Move to next letter
+    blt $t2, 6, pause_text_letter
+
+    addi $t1, $t1, 1         # Move to next row
+    blt $t1, 5, pause_text_row
+
+    jr $ra
 
 quit_game:
     li $v0, 10
@@ -346,6 +456,14 @@ draw_hand_D:
     
   # throw when the W key is pressed
   respond_to_W:
+    li $a0,  90          # Pitch
+    li $a1,  200         # Duration: 200 ms
+    li $a2,  10          # Instrument
+    li $a3,  100         # Volume
+
+    li $v0, 31           # MIDI out (asynchronous)
+    syscall
+    
     jal clear_hand
     jal throw
     jal redraw_grid
@@ -358,6 +476,15 @@ draw_hand_D:
 # t3 - current cell offsetted by 4 
 # t4 - current cell address in grid display
 respond_to_S:
+    
+    li $a0,  72          # Pitch
+    li $a1,  200         # Duration: 200 ms
+    li $a2,  10          # Instrument
+    li $a3,  100         # Volume
+
+    li $v0, 31           # MIDI out (asynchronous)
+    syscall
+    
     lw $s1, player_col              # load player col
     addi $t0, $s1, -4               # convert to grid column from bitmap since player_col is the bitmap "location"
     li $t1, 13                      # bottom most row which account for if bubbles occupy spaces past the third row
@@ -603,6 +730,14 @@ cgo_loop:
 
 # the game is over here (as $v0 = 1)
 cgo_over:
+
+    li $a0, 40       # pitch
+    li $a1, 1000     # duration
+    li $a2, 10       # instrument
+    li $a3, 100      # volume
+    li $v0, 31       # MIDI out
+    syscall
+    
     li   $v0, 1
     jr   $ra
 
@@ -725,9 +860,18 @@ throw_end:
 # $a0 - last placed cell, $t0 - walker, $t1 - top of run, $t2 - thrown colour
 # $t3 - run length, $t4 - current colour, $t5 - top of grid, then finish line
 matches:
-  lw $t2, 0($a0) # colour we threw
-  la $t5, grid # top of grid
-  add $t0, $a0, $zero # start walking at the last placed bubble
+    
+    lw $t2, 0($a0) # colour we threw
+    la $t5, grid # top of grid
+    add $t0, $a0, $zero # start walking at the last placed bubble
+    
+    li $a0,  200          # Pitch
+    li $a1,  200         # Duration: 200 ms
+    li $a2,  10          # Instrument
+    li $a3,  100         # Volume
+
+    li $v0, 31           # MIDI out (asynchronous)
+    syscall
 
 # walk up to the top of the run
 find_top:
@@ -812,6 +956,4 @@ clear_hand_loop:
     addi $t0, $t0, 128        # move down one screen row
     addi $t1, $t1, -1         # one fewer row left to clear
     bgtz $t1, clear_hand_loop # keep going until all 11 rows are cleared
-    jr   $ra                  # go back to respond_to_W    
-
-  
+    jr   $ra                  # go back to respond_to_W
