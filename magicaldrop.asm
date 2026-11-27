@@ -39,6 +39,7 @@ black:	.word 0x00000000
 white: 	.word 0x00FFFFFF 
 pink:	.word 0x00eda3b0
 orange: .word 0x00FFA500
+gray:      .word 0x00808080
 bubble_colours: .word 0x00FF0000, 0x0000FF00, 0x000000FF, 0x00eda3b0   # red, green, blue, pink
 
 game_over: .word 0  # this will be 1 when the game is over
@@ -253,11 +254,53 @@ game_loop:
     j frame_done
     
 frame_done:
+    jal redraw_grid             # erase old aim line
+    jal aim_line                # new aim
     li $v0, 32
     li $a0, 17                  # sleep for 17 ms
     syscall
 
     j game_loop
+    
+# main label for drawing aim line 
+# t1 - player column 
+# t0 - frame count (how many loops we've done)
+# t2 - address of cell
+# t3 - bitmap address of the dot 
+
+aim_line:
+    lw $t1, player_col          # load player column 
+    lw $t0, frame_count         # load frame count
+    
+    andi $t0, $t0, 32           # tells us if 32 frames of game loop have passed
+    beq $t0, $zero, aim_done    # once 32 frames, we are done with this aim line and must flash
+    
+    sll  $t1, $t1, 2            # gets the byte offset 
+    la   $t2, grid
+    add  $t2, $t2, $t1
+    addi $t2, $t2, 348          # calculates memory address of cell (we are at grid row 13, 13 x 28 to offset bytes)
+    
+    lw   $t3, ADDR_DSPL
+    add  $t3, $t3, $t1
+    addi $t3, $t3, 2176         # calculates the bitmap address 
+
+    li   $t4, 7                 # at most 7 dots
+    lw   $t5, gray
+
+
+# t6 - colour of cell
+# t5 - gray colour 
+aim_loop:
+    lw   $t6, 0($t2)            # load colour
+    bne  $t6, $zero, aim_done   # once we reach bubble, stop
+    sw   $t5, 0($t3)            # draw grey at the address for display 
+    addi $t2, $t2, -56          # move grid address up 2 rows (2 x 28)
+    addi $t3, $t3, -256         # move bitmap address up 2 rows (2 x 128)
+    addi $t4, $t4, -1           # decrement the dots to draw
+    bgtz $t4, aim_loop          # if dots are left, repeat the loop
+    
+aim_done:
+    jr $ra
     
 pause_game:
     li $t0, 1
@@ -420,6 +463,7 @@ draw_pause_text:
     jr   $ra
 
 
+
 quit_game:
     li $v0, 10
     syscall
@@ -515,7 +559,7 @@ draw_hand_D:
     
   # throw when the W key is pressed
   respond_to_W:
-    li $a0,  90          # Pitch
+    li $a0,  50          # Pitch
     li $a1,  200         # Duration: 200 ms
     li $a2,  10          # Instrument
     li $a3,  100         # Volume
@@ -923,14 +967,6 @@ matches:
     lw $t2, 0($a0) # colour we threw
     la $t5, grid # top of grid
     add $t0, $a0, $zero # start walking at the last placed bubble
-    
-    li $a0,  200          # Pitch
-    li $a1,  200         # Duration: 200 ms
-    li $a2,  10          # Instrument
-    li $a3,  100         # Volume
-
-    li $v0, 31           # MIDI out (asynchronous)
-    syscall
 
 # walk up to the top of the run
 find_top:
@@ -956,7 +992,14 @@ count_loop:
 
 # clear the run if it's 3 or more
 check_run:
-  blt $t3, 3, matches_end
+    blt  $t3, 3, matches_end    # fewer than 3, so no match
+
+    li   $a0, 100               # pitch
+    li   $a1, 200               # duration: 200 ms
+    li   $a2, 11                # instrument
+    li   $a3, 120               # volume
+    li   $v0, 31                # MIDI out (asynchronous)
+    syscall
 clear_loop:
   beq $t3, $zero, matches_end
   sw $zero, 0($t1) # clear this bubble
