@@ -93,61 +93,18 @@ initialize_grid:
     addi $t0, $t0, 4            # increment the current cell to move on
     addi $t1, $t1, -1           # decrement the number of cells we still need to fill
     bgtz $t1, initialize_grid   # keep drawing until we have filled all cells
-    la $t0, grid                # reset to first grid cell
-    li $t1, 28                  # 3 rows * 7 columns = 21 bubbles that are coloured
 
-# generates random colour bubbles 
-# $a0 - random integer
-# $t4 - stores integer from 1 0 to 2
-random_bubbles:
-    li $a0, 0                   # random generator
-    li $a1, 4                   # upper bound on random int.
-    li $v0, 42                  # random integer range syscall
-    
-    syscall
-    
-    # Choose a colour based on the random number
-    beq $a0, $zero, choose_red      # if a0 is 0, bubble is red
+# build the 4 starting rows with advance_rows, so Hard 4's
+# match check (in gen_row) applies to the starting board too
+# $s2 - starting rows left to make
+li   $s2, 4 # 4 starting rows
+start_rows:
+    jal  advance_rows  # shift rows down + make a new checked row 0
+    addi $s2, $s2, -1  # one fewer row left
+    bgtz $s2, start_rows # keep going until all 4 rows are made
 
-    li $t4, 1                       # temp. store 1 in register
-    beq $a0, $t4, choose_green      # if a0 if 1, bubble is green
-
-    li $t4, 2                       # temp. store 2 in register
-    beq $a0, $t4, choose_blue       # if a0 is 2, choose blue
-
-    j choose_pink                   # else, choose pink
-    
-# $t2 - stores colour
-choose_red:
-    lw $t2, red                     # store RGB of colour into register
-    j store_bubble                  # make bubble
-
-# $t2 - stores colour
-choose_green:
-    lw $t2, green                   # store RGB of colour into register
-    j store_bubble                  # make bubble
-
-# $t2 - stores colour
-choose_blue:
-    lw $t2, blue                    # store RGB of colour into register
-    j store_bubble                  # make bubble
-
-# $t2 - stores colour
-choose_pink:
-    lw $t2, pink                    # store RGB of colour into register
-    j store_bubble                  # make bubble
-	
-# stores bubble in address
-# $t2 - stores colour
-# $t0 - current grid cell
-# $t1 - total number of cells needed to fill
-store_bubble:
-    sw $t2, 0($t0)                  # store colour in current cell
-    addi $t0, $t0, 4                # increment the current cell to move on
-    addi $t1, $t1, -1               # decrement the number of cells we still need to fill
-    bgtz $t1, random_bubbles        # continue until we have filled all bubbles
-
-la $t0, grid                         # reset to first grid cell before drawing
+    la   $t0, grid  # reset to first grid cell before drawing
+    lw   $t3, ADDR_DSPL # reload screen address (advance_rows overwrote $t3)
 
 # draws grid 
 # $t1 - row
